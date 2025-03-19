@@ -1,0 +1,66 @@
+import subprocess
+import os
+
+# Function to run terminal commands
+def run_command(command):
+    try:
+        # Run the command and capture the output
+        result = subprocess.run(command, shell=True, capture_output=True, text=True)
+        # Check if the command ran successfully
+        if result.returncode != 0:
+            raise Exception(f"Error executing command: {result.stderr.strip()}")
+        return result.stdout.strip()  # Return the command output
+    except Exception as e:
+        return f"Error running command: {e}"
+
+# Ask user for the folder path
+folder_path = input("Please enter the folder path where the certificates and key are located: ").strip()
+
+# Define the filenames for the certificates and key
+new_cert_file = "new_cert.cer"
+new_key_file = "new_cert.key"
+old_cert_file = "old_cert.cer"
+
+# Create the full paths to the files
+new_cert_path = os.path.join(folder_path, new_cert_file)
+new_key_path = os.path.join(folder_path, new_key_file)
+old_cert_path = os.path.join(folder_path, old_cert_file)
+
+# Specify the full output file path (you can adjust this if needed)
+output_file = os.path.join(folder_path, "output_results.txt")
+
+# Check if the files exist in the specified folder
+if os.path.exists(new_cert_path) and os.path.exists(new_key_path) and os.path.exists(old_cert_path):
+    print(f"All files are present: {new_cert_file}, {new_key_file}, {old_cert_file}")
+    
+    # Open the output file in write mode
+    with open(output_file, "w") as f:
+        # Define the OpenSSL commands to run
+        commands = {
+            f"openssl x509 -noout -modulus -in {new_cert_path}": f"openssl x509 -noout -modulus -in {new_cert_path}",
+            f"openssl rsa -noout -modulus -in {new_key_path}": f"openssl rsa -noout -modulus -in {new_key_path}",
+            f"openssl x509 -noout -enddate -in {new_cert_path}": f"openssl x509 -noout -enddate -in {new_cert_path}",
+            f"openssl crl2pkcs7 -nocrl -certfile {old_cert_path} | openssl pkcs7 -print_certs -noout": f"openssl crl2pkcs7 -nocrl -certfile {old_cert_path} | openssl pkcs7 -print_certs -noout",
+            f"openssl crl2pkcs7 -nocrl -certfile {new_cert_path} | openssl pkcs7 -print_certs -noout": f"openssl crl2pkcs7 -nocrl -certfile {new_cert_path} | openssl pkcs7 -print_certs -noout"
+        }
+        
+        # Run each command and write the command and its output to the file
+        for command_string, command in commands.items():
+            # Write the command being run to the output file
+            f.write(f"Running Command: {command_string}\n")
+            # Execute the command and capture the output
+            output = run_command(command)
+            # Write the output to the file
+            f.write(f"Output:\n{output}\n\n")
+        
+    print(f"Results have been written to {output_file}")
+else:
+    missing_files = []
+    if not os.path.exists(new_cert_path):
+        missing_files.append(new_cert_file)
+    if not os.path.exists(new_key_path):
+        missing_files.append(new_key_file)
+    if not os.path.exists(old_cert_path):
+        missing_files.append(old_cert_file)
+    
+    print(f"One or more files are missing: {', '.join(missing_files)}. Please check the folder and try again.")
