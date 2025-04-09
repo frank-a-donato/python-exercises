@@ -1,0 +1,89 @@
+import subprocess
+import os
+import sys
+
+# Function to run terminal commands
+def run_command(command):
+    try:
+        result = subprocess.run(command, shell=True, capture_output=True, text=True)
+        if result.returncode != 0:
+            raise Exception(f"Error executing command: {result.stderr.strip()}")
+        return result.stdout.strip()
+    except Exception as e:
+        return f"Error running command: {e}"
+
+# Function to read the paths from the input file
+def read_paths_from_file(file_path):
+    try:
+        with open(file_path, "r") as file:
+            lines = [line.strip() for line in file.readlines()]
+            if len(lines) < 3:
+                raise Exception("Input file must contain at least 3 lines (old_cert, new_cert, new_key).")
+            # The order should be: old_cert, new_cert, new_key
+            return lines[0], lines[1], lines[2]  # old_cert, new_cert, new_key
+    except Exception as e:
+        print(f"Error reading input file: {e}")
+        sys.exit(1)
+
+# Function to get a valid file path from the prompt
+def get_valid_file_path(prompt):
+    while True:
+        file_path = input(prompt).strip()
+        if os.path.exists(file_path):
+            return file_path
+        else:
+            print("The file path you entered is incorrect or the file does not exist. Please try again.\n")
+
+# Check for -input argument and extract value
+input_file = None
+for arg in sys.argv[1:]:
+    if arg.startswith("-input="):
+        input_file = arg.split("=", 1)[1]
+        break
+
+# If input file is specified and exists, read from it
+if input_file and os.path.exists(input_file):
+    print(f"Using input file: {input_file}")
+    old_cert_path, new_cert_path, new_key_path = read_paths_from_file(input_file)
+else:
+    # If no input file, ask for manual input
+    print("No input file found or provided. Switching to manual input...\n")
+    while True:
+        old_cert_path = get_valid_file_path("Please enter the full path of the old certificate file: ")
+        new_cert_path = get_valid_file_path("Please enter the full path of the new certificate file: ")
+        new_key_path = get_valid_file_path("Please enter the full path of the new key file: ")
+
+        confirm = input("You entered:\n"
+                        f"Old Certificate: {old_cert_path}\n"
+                        f"New Certificate: {new_cert_path}\n"
+                        f"New Key: {new_key_path}\n"
+                        "Do these file paths look correct? (yes/no): ").strip().lower()
+        if confirm == "yes":
+            break
+        else:
+            print("Let's try again. Please enter the file paths carefully.\n")
+
+# Determine the folder path for output storage
+folder_path = os.path.dirname(new_cert_path)
+output_file = os.path.join(folder_path, "output_results.txt")
+
+print("All required files are present. Proceeding with validation...\n")
+
+# Open the output file in write mode
+with open(output_file, "w") as f:
+    # Define the OpenSSL commands to run
+    commands = {
+        f"openssl x509 -noout -modulus -in {new_cert_path}": f"openssl x509 -noout -modulus -in {new_cert_path}",
+        f"openssl rsa -noout -modulus -in {new_key_path}": f"openssl rsa -noout -modulus -in {new_key_path}",
+        f"openssl x509 -noout -enddate -in {new_cert_path}": f"openssl x509 -noout -enddate -in {new_cert_path}",
+        f"openssl crl2pkcs7 -nocrl -certfile {old_cert_path} | openssl pkcs7 -print_certs -noout": f"openssl crl2pkcs7 -nocrl -certfile {old_cert_path} | openssl pkcs7 -print_certs -noout",
+        f"openssl crl2pkcs7 -nocrl -certfile {new_cert_path} | openssl pkcs7 -print_certs -noout": f"openssl crl2pkcs7 -nocrl -certfile {new_cert_path} | openssl pkcs7 -print_certs -noout"
+    }
+
+    # Run each command and write the output to the file
+    for command_string, command in commands.items():
+        f.write(f"Running Command: {command_string}\n")
+        output = run_command(command)
+        f.write(f"Output:\n{output}\n\n")
+
+print(f"Results have been written to {output_file}")
